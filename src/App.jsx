@@ -409,28 +409,29 @@ export default function App() {
   }, [qrProduct]);
 
   return (
-    <div className="min-h-screen bg-gray-50 text-gray-900">
-      {!auth ? (<Login onLogin={setAuth} />) : (<>
-      <header className="sticky top-0 z-10 bg-white shadow">
-        <div className="mx-auto w-full px-4 py-3 flex items-center justify-between">
-          <h1 className="text-xl font-bold">LudoBlack</h1>
-          <div className="flex items-center gap-2 text-sm">
-            <span className="px-2 py-1 rounded bg-gray-100">Caja: <b>{mxn.format(cashInRegister)}</b></span>
-            <span className="px-2 py-1 rounded bg-gray-100">Transf.: <b>{mxn.format(totalVentasTransfer)}</b></span>
-            <button className={`px-3 py-1 rounded ${tab==='cocina'?'bg-gray-900 text-white':'bg-blue-100 hover:bg-blue-200'}`} onClick={() => setTab("cocina")}>Cocina</button>
-            <button className={`px-3 py-1 rounded ${tab==='ludoteca'?'bg-gray-900 text-white':'bg-green-100 hover:bg-green-200'}`} onClick={() => setTab('ludoteca')}>Ludoteca</button>
-            <button className={`px-3 py-1 rounded ${tab==='reforzamiento'?'bg-gray-900 text-white':'bg-indigo-100 hover:bg-indigo-200'}`} onClick={() => setTab('reforzamiento')}>Reforzamiento</button>
-            <button className={`px-3 py-1 rounded ${tab==='terapia'?'bg-gray-900 text-white':'bg-purple-100 hover:bg-purple-200'}`} onClick={() => setTab('terapia')}>Terapia de Lenguaje</button>
-            <button className={`px-3 py-1 rounded ${tab==='inventario'?'bg-gray-900 text-white':'bg-amber-100 hover:bg-amber-200'}`} onClick={() => setTab("inventario")}>Inventario</button>
-            <button className={`px-3 py-1 rounded ${tab==='costos'?'bg-gray-900 text-white':'bg-cyan-100 hover:bg-cyan-200'}`} onClick={() => setTab('costos')}>Costos membresias</button>
-            <button className={`px-3 py-1 rounded ${tab==='cierre'?'bg-gray-900 text-white':'bg-slate-100 hover:bg-slate-200'}`} onClick={() => setTab("cierre")}>Cierre</button>
-            <button className={`px-3 py-1 rounded ${tab==='bitacora'?'bg-gray-900 text-white':'bg-rose-100 hover:bg-rose-200'}`} onClick={() => setTab("bitacora")}>Bitácora</button> 
-            {role === 'admin' && (
-              <button className={`px-3 py-1 rounded ${tab==='admin'?'bg-gray-900 text-white':'bg-gray-100 hover:bg-gray-200'}`} onClick={() => setTab('admin')}>Admin</button>
-            )}
-            <button className="px-3 py-1 rounded bg-red-50 hover:bg-red-100" onClick={async () => { await supabase.auth.signOut(); setAuth(null); }}> Cerrar sesión</button>
-          </div>
-        </div>
+   <div className="mx-auto w-full px-4 py-3 flex items-center">
+  <h1 className="text-xl font-bold flex-shrink-0 mr-3">LudoBlack</h1>
+
+  <div className="flex-1 min-w-0 overflow-x-auto whitespace-nowrap no-scrollbar">
+    <div className="inline-flex items-center gap-2 text-sm">
+      <span className="px-2 py-1 rounded bg-gray-100">Caja: <b>{mxn.format(cashInRegister)}</b></span>
+      <span className="px-2 py-1 rounded bg-gray-100">Transf.: <b>{mxn.format(totalVentasTransfer)}</b></span>
+
+      <button className={`px-3 py-1 rounded ${tab==='cocina'?'bg-gray-900 text-white':'bg-blue-100 hover:bg-blue-200'}`} onClick={() => setTab("cocina")}>Cocina</button>
+      <button className={`px-3 py-1 rounded ${tab==='ludoteca'?'bg-gray-900 text-white':'bg-green-100 hover:bg-green-200'}`} onClick={() => setTab('ludoteca')}>Ludoteca</button>
+      <button className={`px-3 py-1 rounded ${tab==='reforzamiento'?'bg-gray-900 text-white':'bg-indigo-100 hover:bg-indigo-200'}`} onClick={() => setTab('reforzamiento')}>Reforzamiento</button>
+      <button className={`px-3 py-1 rounded ${tab==='terapia'?'bg-gray-900 text-white':'bg-purple-100 hover:bg-purple-200'}`} onClick={() => setTab('terapia')}>Terapia de Lenguaje</button>
+      <button className={`px-3 py-1 rounded ${tab==='inventario'?'bg-gray-900 text-white':'bg-amber-100 hover:bg-amber-200'}`} onClick={() => setTab("inventario")}>Inventario</button>
+      <button className={`px-3 py-1 rounded ${tab==='costos'?'bg-gray-900 text-white':'bg-cyan-100 hover:bg-cyan-200'}`} onClick={() => setTab('costos')}>Costos membresias</button>
+      <button className={`px-3 py-1 rounded ${tab==='cierre'?'bg-gray-900 text-white':'bg-slate-100 hover:bg-slate-200'}`} onClick={() => setTab("cierre")}>Cierre</button>
+      <button className={`px-3 py-1 rounded ${tab==='bitacora'?'bg-gray-900 text-white':'bg-rose-100 hover:bg-rose-200'}`} onClick={() => setTab("bitacora")}>Bitácora</button>
+      {role === 'admin' && (
+        <button className={`px-3 py-1 rounded ${tab==='admin'?'bg-gray-900 text-white':'bg-gray-100 hover:bg-gray-200'}`} onClick={() => setTab('admin')}>Admin</button>
+      )}
+      <button className="px-3 py-1 rounded bg-red-50 hover:bg-red-100" onClick={async () => { await supabase.auth.signOut(); setAuth(null); }}> Cerrar sesión</button>
+    </div>
+  </div>
+</div>
       </header>
 
       {msg && (<div className="fixed top-20 left-0 right-0 mx-auto max-w-md bg-black text-white text-sm px-3 py-2 rounded shadow text-center">{msg}</div>)}
@@ -852,14 +853,53 @@ export default function App() {
 
 function NewProductForm({ onCreate }) {
   const [name, setName] = useState("");
-  const [price, setPrice] = useState(0);
-  const [stock, setStock] = useState(0);
+  const [price, setPrice] = useState(""); // string para permitir campo vacío
+  const [stock, setStock] = useState(""); // string para permitir campo vacío
   return (
     <div className="grid gap-3">
-      <input value={name} onChange={e => setName(e.target.value)} placeholder="Nombre" className="px-3 py-2 border rounded" />
-      <input type="number" inputMode="decimal" step="any" min={0} value={price} onChange={e => setPrice(Number(e.target.value || 0))} placeholder="Precio" className="px-3 py-2 border rounded" />
-      <input type="number" inputMode="numeric" pattern="[0-9]*" step="1" min={0} value={stock} onChange={e => setStock(Number(e.target.value || 0))} placeholder="Stock inicial" className="px-3 py-2 border rounded" />
-      <button className="px-4 py-2 rounded bg-blue-600 text-white hover:bg-blue-700" onClick={() => { onCreate(name.trim(), price, stock); setName(""); setPrice(0); setStock(0); }}>Crear</button>
+      <input
+        value={name}
+        onChange={e => setName(e.target.value)}
+        placeholder="Nombre"
+        className="px-3 py-2 border rounded"
+      />
+
+      <input
+        type="number"
+        inputMode="decimal"
+        step="any"
+        min={0}
+        value={price}
+        onChange={e => setPrice(e.target.value)}
+        placeholder="Precio"
+        className="px-3 py-2 border rounded"
+      />
+
+      <input
+        type="number"
+        inputMode="numeric"
+        pattern="[0-9]*"
+        step="1"
+        min={0}
+        value={stock}
+        onChange={e => setStock(e.target.value)}
+        placeholder="Cantidad en stock"
+        className="px-3 py-2 border rounded"
+      />
+
+      <button
+        className="px-4 py-2 rounded bg-blue-600 text-white hover:bg-blue-700"
+        onClick={() => {
+          const priceNum = Number(price || 0);
+          const stockNum = Number(stock || 0);
+          onCreate(name.trim(), priceNum, stockNum);
+          setName("");
+          setPrice("");
+          setStock("");
+        }}
+      >
+        Crear
+      </button>
     </div>
   );
 }
@@ -1106,7 +1146,6 @@ function Login({ onLogin }) {
         </label>
         {err && <div className="text-sm text-red-600">{err}</div>}
         <button type="submit" className="w-full px-4 py-2 rounded bg-gray-900 text-white hover:bg-black">Iniciar sesión</button>
-        <div className="text-xs text-gray-500 text-center">El alta de cuentas se gestiona en base de datos.</div>
       </form>
     </div>
   );
