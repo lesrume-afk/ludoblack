@@ -790,13 +790,11 @@ const MP_LABELS = {
                     <tr key={p.id} className="border-t">
                       <td className="py-2 font-medium">{p.name}</td>
                       <td>
-                        {role === 'admin' ? (
                         <div className="flex items-center gap-2">
-                        <input type="number" inputMode="decimal" step="any" min={0} value={p.price} onChange={e => updatePrice(p.id, Number(e.target.value))} className="w-24 px-2 py-1 border rounded" />
-                        <span className="text-gray-500">{mxn.format(p.price)}</span>
+                          <input type="number" inputMode="decimal" step="any" min={0} value={p.price} onChange={e => updatePrice(p.id, Number(e.target.value))} className="w-24 px-2 py-1 border rounded" />
+                          <span className="text-gray-500">{mxn.format(p.price)}</span>
                         </div>
-                          ) : ( <span>{mxn.format(p.price)}</span>)}
-</td>
+                      </td>
 <td>{p.stock}</td>
 <td><ReplenishForm onAdd={(qty) => addStock(p.id, qty)} /></td>
 <td><button className="px-2 py-1 rounded bg-gray-100 hover:bg-gray-200" onClick={() => setQrProduct(p)}>Ver QR</button></td>
