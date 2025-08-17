@@ -125,6 +125,52 @@ export default function App() {
   });
   const role = auth?.role ?? 'trabajador';
 
+  // --- Carga desde Supabase + Realtime ---
+  const reloadInventory = async () => {
+    const { data, error } = await supabase.from('inventory').select('*').order('name');
+    if (!error && data) setInventory(data);
+  };
+  const reloadSales = async () => {
+    const { data, error } = await supabase
+      .from('sales')
+      .select('id, ts, method, total, paid, change, note, sale_items(id, product_id, name, price, qty, subtotal)')
+      .order('ts', { ascending: false });
+    if (!error && data) {
+      const flat = data.map(s => ({
+        id: s.id, ts: s.ts, method: s.method, total: s.total, paid: s.paid, change: s.change, note: s.note || '',
+        items: (s.sale_items||[]).map(it => ({ id: it.product_id, name: it.name, price: it.price, qty: it.qty, subtotal: it.subtotal }))
+      }));
+      setSales(flat);
+    }
+  };
+  const reloadMoves = async () => {
+    const { data, error } = await supabase.from('cash_moves').select('*').order('ts', { ascending: false });
+    if (!error && data) setMoves(data);
+  };
+  const reloadRegister = async () => {
+    const { data } = await supabase.from('register_state').select('*').eq('id','default').maybeSingle();
+    if (data) { setStartCash(Number(data.start_cash)||0); setDayOpenedAt(data.opened_at); }
+    else {
+      await supabase.from('register_state').insert({ id: 'default', start_cash: 0 });
+      const { data: d2 } = await supabase.from('register_state').select('*').eq('id','default').single();
+      if (d2) { setStartCash(Number(d2.start_cash)||0); setDayOpenedAt(d2.opened_at); }
+    }
+  };
+
+  useEffect(() => { if (auth) { reloadInventory(); reloadSales(); reloadMoves(); reloadRegister(); } }, [auth]);
+
+  useEffect(() => {
+    const ch = supabase
+      .channel('db-changes')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'inventory' }, reloadInventory)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'sales' }, reloadSales)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'sale_items' }, reloadSales)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'cash_moves' }, reloadMoves)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'register_state' }, reloadRegister)
+      .subscribe();
+    return () => { try { supabase.removeChannel(ch); } catch {} };
+  }, []);
+
   // Carrito de venta actual
   const [cart, setCart] = useState([]); // {id, name, price, qty}
   const [search, setSearch] = useState("");
@@ -195,93 +241,93 @@ export default function App() {
   const clampQty = (id) => {setCart(prev => prev.map(i => i.id === id ? { ...i, qty: Math.max(1, Number(i.qty) || 1) } : i));};
   const removeFromCart = (id) => setCart(prev => prev.filter(i => i.id !== id));
 
-  const cobrar = () => {
+  const cobrar = async () => {
     const paidNum = Number(paid);
     const currentCart = cart.filter(i => Number(i.qty) > 0);
-    if (!currentCart.length) { toast("Carrito vacío"); return; }
+    if (!currentCart.length) { toast('Carrito vacío'); return; }
     const totalVenta = cartTotal(currentCart);
-    if (isNaN(paidNum) || paidNum < totalVenta) { toast("Pago insuficiente"); return; }
-    // Verificar stock
-    for (const item of currentCart) {
-    const prod = inventory.find(p => p.id === item.id);
-    if (!prod || prod.stock < item.qty) { toast("Sin stock: " + item.name); return; }
-    }
-    // Actualizar inventario
-    const updatedInventory = inventory.map(p => {
-      const item = currentCart.find(c => c.id === p.id);
-      if (!item) return p; return { ...p, stock: p.stock - item.qty };
+    if (isNaN(paidNum) || paidNum < totalVenta) { toast('Pago insuficiente'); return; }
+
+    const items = currentCart.map(i => ({ id: i.id, qty: i.qty }));
+    const { data, error } = await supabase.rpc('process_sale', {
+      _method: payMethod,
+      _paid: paidNum,
+      _note: '',
+      _items: items
     });
-    setInventory(updatedInventory);
-    // Registrar venta
-    const sale = { id: uid(), ts: todayISO(), method: payMethod, items: currentCart.map(i => ({ ...i, subtotal: i.price * i.qty })), total: totalVenta, paid: paidNum, change: paidNum - totalVenta };
-    setSales(prev => [sale, ...prev]);
-    // Limpiar
-    setCart([]); setPaid(""); setPayMethod('caja'); toast("Venta registrada");
+    if (error) { toast(error.message || 'Error al cobrar'); return; }
+    setCart([]); setPaid(''); setPayMethod('caja'); toast('Venta registrada');
+    await reloadInventory(); await reloadSales();
   };
 
   // Venta de servicios (no inventario)
-  const registerServiceSale = ({ method, items, total, paid, note }) => {
+  const registerServiceSale = async ({ method, items, total, paid, note }) => {
     const paidNum = Number(paid);
     const change = computeChange(paidNum, total);
-    const sale = {
-        id: uid(), ts: todayISO(), method,
-        items: items.map(i => ({ ...i, subtotal: i.price * i.qty })),
-        total, paid: paidNum, change, note
-
-    }; 
-    setSales(prev => [sale, ...prev]);
+    const { data: sale, error } = await supabase
+      .from('sales')
+      .insert({ method, total, paid: paidNum, change, note })
+      .select()
+      .single();
+    if (error) { toast('Error al registrar'); return; }
+    if (items?.length) {
+      const rows = items.map(i => ({ sale_id: sale.id, product_id: null, name: i.name, price: i.price, qty: i.qty, subtotal: i.price * i.qty }));
+      await supabase.from('sale_items').insert(rows);
+    }
+    setSales(prev => [{ id: sale.id, ts: sale.ts, method: sale.method, total: sale.total, paid: sale.paid, change: sale.change, note: sale.note || '', items: items.map(i => ({ id: null, name: i.name, price: i.price, qty: i.qty, subtotal: i.price * i.qty })) }, ...prev]);
     toast('Venta registrada');
   };
 
   // Inventario
-  const createProduct = (name, price, stock) => {
+  const createProduct = async (name, price, stock) => {
     if (!name || price < 0 || stock < 0) return;
-    setInventory(prev => [{ id: uid(), name, price, stock }, ...prev]);
-    toast("Producto agregado");
+    const { data, error } = await supabase.from('inventory').insert({ name, price, stock }).select().single();
+    if (error) { toast('Error al crear'); return; }
+    setInventory(prev => [data, ...prev]);
+    toast('Producto agregado');
   };
-  const addStock = (id, qty, cost = 0) => {
+  const addStock = async (id, qty, cost = 0) => {
     if (qty <= 0) return;
-    setInventory(prev => prev.map(p => p.id === id ? { ...p, stock: p.stock + qty } : p));
-    if (cost > 0) setMoves(prev => [{ id: uid(), type: 'compra', concept: 'Compra de inventario', amount: cost, ts: todayISO() }, ...prev]);
-    toast("Stock actualizado");
+    const prod = inventory.find(p => p.id === id);
+    const newStock = (prod?.stock || 0) + qty;
+    const { error } = await supabase.from('inventory').update({ stock: newStock }).eq('id', id);
+    if (error) { toast('Error al actualizar stock'); return; }
+    setInventory(prev => prev.map(p => p.id === id ? { ...p, stock: newStock } : p));
+    if (cost > 0) await supabase.from('cash_moves').insert({ type: 'compra', concept: 'Compra de inventario', amount: cost });
+    toast('Stock actualizado');
   };
-  const updatePrice = (id, price) => { if (price < 0) return; setInventory(prev => prev.map(p => p.id === id ? { ...p, price } : p)); };
-  const removeProduct = (id) => setInventory(prev => prev.filter(p => p.id !== id));
+  const updatePrice = async (id, price) => {
+    if (price < 0) return;
+    const { error } = await supabase.from('inventory').update({ price }).eq('id', id);
+    if (error) { toast('Error al actualizar precio'); return; }
+    setInventory(prev => prev.map(p => p.id === id ? { ...p, price } : p));
+  };
+  const removeProduct = async (id) => {
+    const { error } = await supabase.from('inventory').delete().eq('id', id);
+    if (error) { toast('Error al eliminar'); return; }
+    setInventory(prev => prev.filter(p => p.id !== id));
+  };
 
   // Movimientos de caja manuales
-  const addMove = (type, concept, amount) => {
+  const addMove = async (type, concept, amount) => {
     if (!concept || amount <= 0) return;
-    setMoves(prev => [{ id: uid(), type, concept, amount, ts: todayISO() }, ...prev]);
+    const { error, data } = await supabase.from('cash_moves').insert({ type, concept, amount }).select().single();
+    if (error) { toast('Error al registrar'); return; }
+    setMoves(prev => [data, ...prev]);
     toast((type === 'ingreso' ? 'Ingreso' : 'Egreso') + ' registrado');
   };
 
-  // ADMIN: ajustes sobre ventas sin registrar movimientos de caja
-  const adminChangeItemQty = (saleId, itemId, newQty) => {
-    setSales(prev => {
-      const idx = prev.findIndex(s => s.id === saleId);
-      if (idx === -1) return prev;
-      const currentSale = prev[idx];
-      const { sale: updatedSale, restored } = adminAdjustSaleItemPure(currentSale, itemId, newQty);
-      // Devolver stock
-      if (restored > 0) setInventory(inv => inv.map(p => p.id === itemId ? { ...p, stock: p.stock + restored } : p));
-      const next = [...prev];
-      if (updatedSale.items.length === 0 || updatedSale.total === 0) next.splice(idx, 1); else next[idx] = updatedSale;
-      return next;
-    });
+  // ADMIN: ajustes sobre ventas
+  const adminChangeItemQty = async (saleId, itemId, newQty) => {
+    const { error } = await supabase.rpc('admin_adjust_sale_item', { _sale_id: saleId, _product_id: itemId, _new_qty: newQty });
+    if (error) { toast('Error al ajustar'); return; }
+    await reloadInventory(); await reloadSales();
     toast('Venta ajustada');
   };
-  const adminDeleteSale = (saleId) => {
-    setSales(prev => {
-      const idx = prev.findIndex(s => s.id === saleId);
-      if (idx === -1) return prev;
-      const s = prev[idx];
-      setInventory(inv => {
-        let out = [...inv];
-        for (const it of s.items) out = out.map(p => p.id === it.id ? { ...p, stock: p.stock + it.qty } : p);
-        return out;
-      });
-      const next = [...prev]; next.splice(idx, 1); return next;
-    });
+  const adminDeleteSale = async (saleId) => {
+    const { error } = await supabase.rpc('admin_delete_sale', { _sale_id: saleId });
+    if (error) { toast('Error al eliminar'); return; }
+    await reloadInventory(); await reloadSales();
     toast('Venta eliminada y stock devuelto');
   };
 
@@ -321,9 +367,14 @@ export default function App() {
     descargarCSV(rows, 'cierre');
   };
 
-  const cerrarDia = () => {
-    if (!confirm("¿Cerrar el día y reiniciar ventas/egresos?")) return;
-    setStartCash(cashInRegister); setSales([]); setMoves([]); setDayOpenedAt(todayISO()); toast("Día cerrado");
+  const cerrarDia = async () => {
+    if (!confirm('¿Cerrar el día y reiniciar ventas/egresos?')) return;
+    const opened = new Date(dayOpenedAt).toISOString();
+    await supabase.from('register_state').update({ start_cash: cashInRegister, opened_at: todayISO() }).eq('id','default');
+    await supabase.from('sales').delete().gte('ts', opened);
+    await supabase.from('cash_moves').delete().gte('ts', opened);
+    await reloadSales(); await reloadMoves(); await reloadRegister();
+    toast('Día cerrado');
   };
 
   const resetAll = () => {
@@ -332,7 +383,7 @@ export default function App() {
   };
 
   // Consolidación mensual: exporta CSV y elimina ventas/movimientos del mes
-  const consolidateMonth = (startDate) => {
+  const consolidateMonth = async (startDate) => {
     const start = new Date(startDate);
     const end = new Date(start.getFullYear(), start.getMonth() + 1, 1);
     const inRange = (ts) => { const t = new Date(ts); return t >= start && t < end; };
@@ -361,12 +412,11 @@ export default function App() {
       ['Total egresos de caja', totalEgresosCaja.toFixed(2)],
       ['Balance de caja (ingresos - egresos)', balanceCaja.toFixed(2)],
     ];
-
     descargarCSV(rows, `bitacora_mes_${ym}`);
 
-    // Eliminar datos del mes consolidado
-    setSales(prev => prev.filter(s => !inRange(s.ts)));
-    setMoves(prev => prev.filter(m => !inRange(m.ts)));
+    await supabase.from('sales').delete().gte('ts', start.toISOString()).lt('ts', end.toISOString());
+    await supabase.from('cash_moves').delete().gte('ts', start.toISOString()).lt('ts', end.toISOString());
+    await reloadSales(); await reloadMoves();
     toast('Mes consolidado y depurado');
   };
 
