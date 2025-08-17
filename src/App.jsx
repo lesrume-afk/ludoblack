@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import QRCode from "qrcode"; // Generación de QR en cliente
 import { Html5Qrcode } from "html5-qrcode"; // Escaneo con cámara
-import { supabase } from "./lib/supabase";
+import { supabase } from "./supabase";
 
 // Demo POS + Inventario + Cocina + Admin + Bitácora
 // Persistencia localStorage. Moneda MXN. Pensado para uso offline.
