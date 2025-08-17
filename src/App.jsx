@@ -117,6 +117,14 @@ export default function App() {
       terapia: { individual: 400, ocho: 2800 },
     };
   });
+
+  // Etiquetas legibles para precios de membresías (para RPC)
+const MP_LABELS = {
+  ludoteca: { v12: 'Visita 1-2 HRS', v36: 'Visita 3-6 HRS', p1: 'Paquete 1', p2: 'Paquete 2' },
+  reforzamiento: { visita: 'Visita', m12: 'MES x 12 visitas', m15: 'MES x 15 visitas', m20: 'MES x 20 visitas' },
+  terapia: { individual: 'Individual', ocho: '8 visitas' },
+};
+
   const reloadMembership = async () => {
     const { data, error } = await supabase
       .from('membership_prices')
@@ -127,13 +135,19 @@ export default function App() {
     setMembership(m);
   };
 
-  const applyMembershipChange = (service, key, value) => {
-    const num = Number(value || 0);
-    setMembership(m => ({ ...m, [service]: { ...m[service], [key]: num } }));
-    supabase.from('membership_prices').upsert({
-      service, key, price: num, updated_by: auth?.id ?? null
+  // ANTES: const applyMembershipChange = (service, key, value) => { ... }
+  const applyMembershipChange = async (service, key, value) => {
+  const num = Number(value || 0);
+  setMembership(m => ({ ...m, [service]: { ...m[service], [key]: num } }));
+  try {
+    await supabase.rpc('upsert_membership_price', {
+      _service: service,
+      _key: key,
+      _label: MP_LABELS?.[service]?.[key] ?? key,
+      _price: num,
     });
-  };
+  } catch {}
+};
 
   const [tab, setTab] = useState("cocina"); // 'cocina' en lugar de 'venta'
   const [auth, setAuth] = useState(() => {
@@ -166,12 +180,10 @@ export default function App() {
   };
   const reloadRegister = async () => {
     const { data } = await supabase.from('register_state').select('*').eq('id','default').maybeSingle();
-    if (data) { setStartCash(Number(data.start_cash)||0); setDayOpenedAt(data.opened_at); }
-    else {
-      await supabase.from('register_state').insert({ id: 'default', start_cash: 0 });
-      const { data: d2 } = await supabase.from('register_state').select('*').eq('id','default').single();
-      if (d2) { setStartCash(Number(d2.start_cash)||0); setDayOpenedAt(d2.opened_at); }
-    }
+    if (data) { setStartCash(Number(data.start_cash)||0); setDayOpenedAt(data.opened_at); return; }
+    await supabase.rpc('set_start_cash', { _amount: 0 });
+    const { data: d2 } = await supabase.from('register_state').select('*').eq('id','default').maybeSingle();
+    if (d2) { setStartCash(Number(d2.start_cash)||0); setDayOpenedAt(d2.opened_at); }
   };
 
   useEffect(() => {
@@ -289,57 +301,48 @@ export default function App() {
   // Venta de servicios (no inventario)
   const registerServiceSale = async ({ method, items, total, paid, note }) => {
     const paidNum = Number(paid);
-    const change = computeChange(paidNum, total);
-    const { data: sale, error } = await supabase
-      .from('sales')
-      .insert({ method, total, paid: paidNum, change, note })
-      .select()
-      .single();
-    if (error) { toast('Error al registrar'); return; }
-    if (items?.length) {
-      const rows = items.map(i => ({ sale_id: sale.id, product_id: null, name: i.name, price: i.price, qty: i.qty, subtotal: i.price * i.qty }));
-      await supabase.from('sale_items').insert(rows);
-    }
-    setSales(prev => [{ id: sale.id, ts: sale.ts, method: sale.method, total: sale.total, paid: sale.paid, change: sale.change, note: sale.note || '', items: items.map(i => ({ id: null, name: i.name, price: i.price, qty: i.qty, subtotal: i.price * i.qty })) }, ...prev]);
+    if (!items.length) return;
+    if (isNaN(paidNum) || paidNum < total) return;
+    const payload = items.map(i => ({ name: i.name, price: i.price, qty: i.qty }));
+    const { error } = await supabase.rpc('process_service_sale', { _method: method, _paid: paidNum, _note: note || '', _items: payload });
+    if (error) { toast(error.message || 'Error al registrar'); return; }
     toast('Venta registrada');
   };
 
   // Inventario
   const createProduct = async (name, price, stock) => {
     if (!name || price < 0 || stock < 0) return;
-    const { data, error } = await supabase.from('inventory').insert({ name, price, stock }).select().single();
-    if (error) { toast('Error al crear'); return; }
-    setInventory(prev => [data, ...prev]);
+    const { error } = await supabase.rpc('create_product', { _name: name, _price: price, _stock: stock });
+    if (error) { toast(error.message || 'Error al crear'); return; }
+    await reloadInventory();
     toast('Producto agregado');
   };
   const addStock = async (id, qty, cost = 0) => {
     if (qty <= 0) return;
-    const prod = inventory.find(p => p.id === id);
-    const newStock = (prod?.stock || 0) + qty;
-    const { error } = await supabase.from('inventory').update({ stock: newStock }).eq('id', id);
-    if (error) { toast('Error al actualizar stock'); return; }
-    setInventory(prev => prev.map(p => p.id === id ? { ...p, stock: newStock } : p));
-    if (cost > 0) await supabase.from('cash_moves').insert({ type: 'compra', concept: 'Compra de inventario', amount: cost });
+    const { error } = await supabase.rpc('add_stock', { _product: id, _qty: qty, _cost: cost });
+    if (error) { toast(error.message || 'Error al actualizar stock'); return; }
+    await reloadInventory();
+    await reloadMoves();
     toast('Stock actualizado');
   };
   const updatePrice = async (id, price) => {
     if (price < 0) return;
-    const { error } = await supabase.from('inventory').update({ price }).eq('id', id);
-    if (error) { toast('Error al actualizar precio'); return; }
-    setInventory(prev => prev.map(p => p.id === id ? { ...p, price } : p));
+    const { error } = await supabase.rpc('update_price', { _product: id, _price: price });
+    if (error) { toast(error.message || 'Error al actualizar precio'); return; }
+    await reloadInventory();
   };
   const removeProduct = async (id) => {
-    const { error } = await supabase.from('inventory').delete().eq('id', id);
-    if (error) { toast('Error al eliminar'); return; }
-    setInventory(prev => prev.filter(p => p.id !== id));
+    const { error } = await supabase.rpc('remove_product', { _product: id });
+    if (error) { toast(error.message || 'Error al eliminar'); return; }
+    await reloadInventory();
   };
 
   // Movimientos de caja manuales
   const addMove = async (type, concept, amount) => {
     if (!concept || amount <= 0) return;
-    const { error, data } = await supabase.from('cash_moves').insert({ type, concept, amount }).select().single();
-    if (error) { toast('Error al registrar'); return; }
-    setMoves(prev => [data, ...prev]);
+    const { error } = await supabase.rpc('add_cash_move', { _type: type, _concept: concept, _amount: amount });
+    if (error) { toast(error.message || 'Error al registrar'); return; }
+    await reloadMoves();
     toast((type === 'ingreso' ? 'Ingreso' : 'Egreso') + ' registrado');
   };
 
@@ -394,12 +397,9 @@ export default function App() {
   };
 
   const cerrarDia = async () => {
-    if (!confirm('¿Cerrar el día y reiniciar ventas/egresos?')) return;
-    const opened = new Date(dayOpenedAt).toISOString();
-    await supabase.from('register_state').update({ start_cash: cashInRegister, opened_at: todayISO() }).eq('id','default');
-    await supabase.from('sales').delete().gte('ts', opened);
-    await supabase.from('cash_moves').delete().gte('ts', opened);
-    await reloadSales(); await reloadMoves(); await reloadRegister();
+    if (!confirm('¿Cerrar el día y fijar caja inicial al saldo actual?')) return;
+    await supabase.rpc('set_start_cash', { _amount: cashInRegister });
+    await reloadRegister();
     toast('Día cerrado');
   };
 
@@ -627,94 +627,101 @@ export default function App() {
         )}
 
 {tab === 'costos' && (
-  <section className="grid gap-6">
-    <div className="bg-white rounded-2xl shadow p-4">
-      <h2 className="text-lg font-semibold mb-3">Costos membresias</h2>
-      <div className="grid md:grid-cols-3 gap-6 text-sm">
-        <div>
-          <h3 className="font-semibold mb-2">Ludoteca</h3>
-          <label className="block mb-2">Visita 1-2 HRS
-            <input type="number" inputMode="decimal" step="any" min={0}
-              defaultValue={membership.ludoteca.v12}
-              key={membership.ludoteca.v12}
-              onBlur={e => applyMembershipChange('ludoteca','v12', e.target.value)}
-              className="mt-1 w-full px-3 py-2 border rounded" />
-          </label>
-          <label className="block mb-2">Visita 3-6 HRS
-            <input type="number" inputMode="decimal" step="any" min={0}
-              defaultValue={membership.ludoteca.v36}
-              key={membership.ludoteca.v36}
-              onBlur={e => applyMembershipChange('ludoteca','v36', e.target.value)}
-              className="mt-1 w-full px-3 py-2 border rounded" />
-          </label>
-          <label className="block mb-2">Paquete 1
-            <input type="number" inputMode="decimal" step="any" min={0}
-              defaultValue={membership.ludoteca.p1}
-              key={membership.ludoteca.p1}
-              onBlur={e => applyMembershipChange('ludoteca','p1', e.target.value)}
-              className="mt-1 w-full px-3 py-2 border rounded" />
-          </label>
-          <label className="block">Paquete 2
-            <input type="number" inputMode="decimal" step="any" min={0}
-              defaultValue={membership.ludoteca.p2}
-              key={membership.ludoteca.p2}
-              onBlur={e => applyMembershipChange('ludoteca','p2', e.target.value)}
-              className="mt-1 w-full px-3 py-2 border rounded" />
-          </label>
-        </div>
+  role === 'admin' ? (
+    <section className="grid gap-6">
+      <div className="bg-white rounded-2xl shadow p-4">
+        <h2 className="text-lg font-semibold mb-3">Costos membresias</h2>
+        <div className="grid md:grid-cols-3 gap-6 text-sm">
+          <div>
+            <h3 className="font-semibold mb-2">Ludoteca</h3>
+            <label className="block mb-2">Visita 1-2 HRS
+              <input type="number" inputMode="decimal" step="any" min={0}
+                defaultValue={membership.ludoteca.v12}
+                key={membership.ludoteca.v12}
+                onBlur={e => applyMembershipChange('ludoteca','v12', e.target.value)}
+                className="mt-1 w-full px-3 py-2 border rounded" />
+            </label>
+            <label className="block mb-2">Visita 3-6 HRS
+              <input type="number" inputMode="decimal" step="any" min={0}
+                defaultValue={membership.ludoteca.v36}
+                key={membership.ludoteca.v36}
+                onBlur={e => applyMembershipChange('ludoteca','v36', e.target.value)}
+                className="mt-1 w-full px-3 py-2 border rounded" />
+            </label>
+            <label className="block mb-2">Paquete 1
+              <input type="number" inputMode="decimal" step="any" min={0}
+                defaultValue={membership.ludoteca.p1}
+                key={membership.ludoteca.p1}
+                onBlur={e => applyMembershipChange('ludoteca','p1', e.target.value)}
+                className="mt-1 w-full px-3 py-2 border rounded" />
+            </label>
+            <label className="block">Paquete 2
+              <input type="number" inputMode="decimal" step="any" min={0}
+                defaultValue={membership.ludoteca.p2}
+                key={membership.ludoteca.p2}
+                onBlur={e => applyMembershipChange('ludoteca','p2', e.target.value)}
+                className="mt-1 w-full px-3 py-2 border rounded" />
+            </label>
+          </div>
 
-        <div>
-          <h3 className="font-semibold mb-2">Reforzamiento</h3>
-          <label className="block mb-2">Visita
-            <input type="number" inputMode="decimal" step="any" min={0}
-              defaultValue={membership.reforzamiento.visita}
-              key={membership.reforzamiento.visita}
-              onBlur={e => applyMembershipChange('reforzamiento','visita', e.target.value)}
-              className="mt-1 w-full px-3 py-2 border rounded" />
-          </label>
-          <label className="block mb-2">MES x 12 visitas
-            <input type="number" inputMode="decimal" step="any" min={0}
-              defaultValue={membership.reforzamiento.m12}
-              key={membership.reforzamiento.m12}
-              onBlur={e => applyMembershipChange('reforzamiento','m12', e.target.value)}
-              className="mt-1 w-full px-3 py-2 border rounded" />
-          </label>
-          <label className="block mb-2">MES x 15 visitas
-            <input type="number" inputMode="decimal" step="any" min={0}
-              defaultValue={membership.reforzamiento.m15}
-              key={membership.reforzamiento.m15}
-              onBlur={e => applyMembershipChange('reforzamiento','m15', e.target.value)}
-              className="mt-1 w-full px-3 py-2 border rounded" />
-          </label>
-          <label className="block">MES x 20 visitas
-            <input type="number" inputMode="decimal" step="any" min={0}
-              defaultValue={membership.reforzamiento.m20}
-              key={membership.reforzamiento.m20}
-              onBlur={e => applyMembershipChange('reforzamiento','m20', e.target.value)}
-              className="mt-1 w-full px-3 py-2 border rounded" />
-          </label>
-        </div>
+          <div>
+            <h3 className="font-semibold mb-2">Reforzamiento</h3>
+            <label className="block mb-2">Visita
+              <input type="number" inputMode="decimal" step="any" min={0}
+                defaultValue={membership.reforzamiento.visita}
+                key={membership.reforzamiento.visita}
+                onBlur={e => applyMembershipChange('reforzamiento','visita', e.target.value)}
+                className="mt-1 w-full px-3 py-2 border rounded" />
+            </label>
+            <label className="block mb-2">MES x 12 visitas
+              <input type="number" inputMode="decimal" step="any" min={0}
+                defaultValue={membership.reforzamiento.m12}
+                key={membership.reforzamiento.m12}
+                onBlur={e => applyMembershipChange('reforzamiento','m12', e.target.value)}
+                className="mt-1 w-full px-3 py-2 border rounded" />
+            </label>
+            <label className="block mb-2">MES x 15 visitas
+              <input type="number" inputMode="decimal" step="any" min={0}
+                defaultValue={membership.reforzamiento.m15}
+                key={membership.reforzamiento.m15}
+                onBlur={e => applyMembershipChange('reforzamiento','m15', e.target.value)}
+                className="mt-1 w-full px-3 py-2 border rounded" />
+            </label>
+            <label className="block">MES x 20 visitas
+              <input type="number" inputMode="decimal" step="any" min={0}
+                defaultValue={membership.reforzamiento.m20}
+                key={membership.reforzamiento.m20}
+                onBlur={e => applyMembershipChange('reforzamiento','m20', e.target.value)}
+                className="mt-1 w-full px-3 py-2 border rounded" />
+            </label>
+          </div>
 
-        <div>
-          <h3 className="font-semibold mb-2">Terapia de Lenguaje</h3>
-          <label className="block mb-2">Individual
-            <input type="number" inputMode="decimal" step="any" min={0}
-              defaultValue={membership.terapia.individual}
-              key={membership.terapia.individual}
-              onBlur={e => applyMembershipChange('terapia','individual', e.target.value)}
-              className="mt-1 w-full px-3 py-2 border rounded" />
-          </label>
-          <label className="block">8 visitas
-            <input type="number" inputMode="decimal" step="any" min={0}
-              defaultValue={membership.terapia.ocho}
-              key={membership.terapia.ocho}
-              onBlur={e => applyMembershipChange('terapia','ocho', e.target.value)}
-              className="mt-1 w-full px-3 py-2 border rounded" />
-          </label>
+          <div>
+            <h3 className="font-semibold mb-2">Terapia de Lenguaje</h3>
+            <label className="block mb-2">Individual
+              <input type="number" inputMode="decimal" step="any" min={0}
+                defaultValue={membership.terapia.individual}
+                key={membership.terapia.individual}
+                onBlur={e => applyMembershipChange('terapia','individual', e.target.value)}
+                className="mt-1 w-full px-3 py-2 border rounded" />
+            </label>
+            <label className="block">8 visitas
+              <input type="number" inputMode="decimal" step="any" min={0}
+                defaultValue={membership.terapia.ocho}
+                key={membership.terapia.ocho}
+                onBlur={e => applyMembershipChange('terapia','ocho', e.target.value)}
+                className="mt-1 w-full px-3 py-2 border rounded" />
+            </label>
+          </div>
         </div>
       </div>
-    </div>
-  </section>
+    </section>
+  ) : (
+    <section className="bg-white rounded-2xl shadow p-4">
+      <h2 className="text-lg font-semibold">Costos membresias</h2>
+      <p className="text-sm text-gray-600">Solo administradores pueden actualizar estos precios.</p>
+    </section>
+  )
 )}
 
         {tab === 'ludoteca' && (
@@ -756,11 +763,11 @@ export default function App() {
 
         {tab === "inventario" && (
           <section className="grid md:grid-cols-1 gap-6">
-            {/* Crear producto */}
-            <div className="bg-white rounded-2xl shadow p-4">
-              <h2 className="text-lg font-semibold mb-3">Nuevo producto</h2>
-              <NewProductForm onCreate={createProduct} />
-            </div>
+           {/* Crear producto (todos los roles) */}
+           <div className="bg-white rounded-2xl shadow p-4">
+             <h2 className="text-lg font-semibold mb-3">Nuevo producto</h2>
+             <NewProductForm onCreate={createProduct} />
+           </div>
 
             {/* Movimientos de caja manuales */}
             <div className="bg-white rounded-2xl shadow p-4">
@@ -782,15 +789,17 @@ export default function App() {
                     <tr key={p.id} className="border-t">
                       <td className="py-2 font-medium">{p.name}</td>
                       <td>
+                        {role === 'admin' ? (
                         <div className="flex items-center gap-2">
-                          <input type="number" inputMode="decimal" step="any" min={0} value={p.price} onChange={e => updatePrice(p.id, Number(e.target.value))} className="w-24 px-2 py-1 border rounded" />
-                          <span className="text-gray-500">{mxn.format(p.price)}</span>
+                        <input type="number" inputMode="decimal" step="any" min={0} value={p.price} onChange={e => updatePrice(p.id, Number(e.target.value))} className="w-24 px-2 py-1 border rounded" />
+                        <span className="text-gray-500">{mxn.format(p.price)}</span>
                         </div>
-                      </td>
-                      <td>{p.stock}</td>
-                      <td><ReplenishForm onAdd={(qty) => addStock(p.id, qty)} /></td>
-                      <td><button className="px-2 py-1 rounded bg-gray-100 hover:bg-gray-200" onClick={() => setQrProduct(p)}>Ver QR</button></td>
-                      <td><button className="text-red-600 hover:underline" onClick={() => removeProduct(p.id)}>Eliminar</button></td>
+                          ) : ( <span>{mxn.format(p.price)}</span>)}
+</td>
+<td>{p.stock}</td>
+<td>{role === 'admin' ? <ReplenishForm onAdd={(qty) => addStock(p.id, qty)} /> : <span className="text-gray-400">—</span>}</td>
+<td><button className="px-2 py-1 rounded bg-gray-100 hover:bg-gray-200" onClick={() => setQrProduct(p)}>Ver QR</button></td>
+<td>{role === 'admin' ? <button className="text-red-600 hover:underline" onClick={() => removeProduct(p.id)}>Eliminar</button> : null}</td>
                     </tr>
                   ))}
                 </tbody>
