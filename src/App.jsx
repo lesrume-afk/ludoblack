@@ -46,7 +46,7 @@ function calcTotals(sales, moves, startCash) {
   const cashInRegister = startCash + totalVentasCaja + totalIngresosManual - totalEgresos;
   return { totalVentas, totalVentasCaja, totalVentasTransfer, totalIngresosManual, totalEgresos, cashInRegister };
 }
-function cartTotal(items) { return items.reduce((s, it) => s + it.price * it.qty, 0); }
+function cartTotal(items) { return items.reduce((s, it) => s + it.price * Number(it.qty || 0), 0); }
 function computeChange(paid, total) { return Math.max(0, Number(paid || 0) - total); }
 
 // QR helpers (v1: solo id)
@@ -286,7 +286,7 @@ const MP_LABELS = {
     const totalVenta = cartTotal(currentCart);
     if (isNaN(paidNum) || paidNum < totalVenta) { toast('Pago insuficiente'); return; }
 
-    const items = currentCart.map(i => ({ id: i.id, qty: i.qty }));
+    const items = currentCart.map(i => ({ id: i.id, qty: Number(i.qty || 0) }));
     const { data, error } = await supabase.rpc('process_sale', {
       _method: payMethod,
       _paid: paidNum,
@@ -545,20 +545,21 @@ const MP_LABELS = {
                         <tr key={item.id} className="border-t">
                           <td className="py-2">{item.name}</td>
                           <td>
-                            <input
-                              type="number"
-                              inputMode="numeric"
-                              pattern="[0-9]*"
-                              step="1"
-                              min={1}
-                              value={item.qty}
-                              onChange={e => updateQty(item.id, e.target.value === '' ? 0 : Number(e.target.value))}
-                              onBlur={() => clampQty(item.id)}
-                              className="w-16 px-2 py-1 border rounded"
-                            />
+                          <input
+                          type="text"
+                          inputMode="numeric"
+                          pattern="[0-9]*"
+                          value={String(item.qty ?? '')}
+                          onChange={e => {
+                          const v = e.target.value.replace(/[^0-9]/g, '');
+                          updateQty(item.id, v);
+                          }}
+                          onBlur={() => clampQty(item.id)}
+                          className="w-16 px-2 py-1 border rounded"
+                          />
                           </td>
                           <td>{mxn.format(item.price)}</td>
-                          <td>{mxn.format(item.price * item.qty)}</td>
+                          <td>{mxn.format(item.price * Number(item.qty || 0))}</td>
                           <td><button className="text-red-600 hover:underline" onClick={() => removeFromCart(item.id)}>Quitar</button></td>
                         </tr>
                       ))}
@@ -797,7 +798,7 @@ const MP_LABELS = {
                           ) : ( <span>{mxn.format(p.price)}</span>)}
 </td>
 <td>{p.stock}</td>
-<td>{role === 'admin' ? <ReplenishForm onAdd={(qty) => addStock(p.id, qty)} /> : <span className="text-gray-400">—</span>}</td>
+<td><ReplenishForm onAdd={(qty) => addStock(p.id, qty)} /></td>
 <td><button className="px-2 py-1 rounded bg-gray-100 hover:bg-gray-200" onClick={() => setQrProduct(p)}>Ver QR</button></td>
 <td>{role === 'admin' ? <button className="text-red-600 hover:underline" onClick={() => removeProduct(p.id)}>Eliminar</button> : null}</td>
                     </tr>
@@ -1002,11 +1003,24 @@ function NewProductForm({ onCreate }) {
 }
 
 function ReplenishForm({ onAdd }) {
-  const [qty, setQty] = useState(0);
+  const [qty, setQty] = useState('');
   return (
     <div className="flex items-center gap-2">
-      <input type="number" inputMode="numeric" pattern="[0-9]*" step="1" min={0} value={qty} onChange={e => setQty(Number(e.target.value || 0))} className="w-20 px-2 py-1 border rounded" placeholder="Cant." />
-      <button className="px-3 py-1 rounded bg-emerald-600 text-white hover:bg-emerald-700" onClick={() => { onAdd(qty); setQty(0); }}>Sumar</button>
+      <input
+        type="text"
+        inputMode="numeric"
+        pattern="[0-9]*"
+        value={qty}
+        onChange={e => setQty(e.target.value.replace(/[^0-9]/g, ''))}
+        className="w-20 px-2 py-1 border rounded"
+        placeholder="Cant."
+      />
+      <button
+        className="px-3 py-1 rounded bg-emerald-600 text-white hover:bg-emerald-700"
+        onClick={() => { const q = Number(qty || 0); onAdd(q); setQty(''); }}
+      >
+        Sumar
+      </button>
     </div>
   );
 }
