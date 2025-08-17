@@ -628,101 +628,94 @@ const MP_LABELS = {
         )}
 
 {tab === 'costos' && (
-  role === 'admin' ? (
-    <section className="grid gap-6">
-      <div className="bg-white rounded-2xl shadow p-4">
-        <h2 className="text-lg font-semibold mb-3">Costos membresias</h2>
-        <div className="grid md:grid-cols-3 gap-6 text-sm">
-          <div>
-            <h3 className="font-semibold mb-2">Ludoteca</h3>
-            <label className="block mb-2">Visita 1-2 HRS
-              <input type="number" inputMode="decimal" step="any" min={0}
-                defaultValue={membership.ludoteca.v12}
-                key={membership.ludoteca.v12}
-                onBlur={e => applyMembershipChange('ludoteca','v12', e.target.value)}
-                className="mt-1 w-full px-3 py-2 border rounded" />
-            </label>
-            <label className="block mb-2">Visita 3-6 HRS
-              <input type="number" inputMode="decimal" step="any" min={0}
-                defaultValue={membership.ludoteca.v36}
-                key={membership.ludoteca.v36}
-                onBlur={e => applyMembershipChange('ludoteca','v36', e.target.value)}
-                className="mt-1 w-full px-3 py-2 border rounded" />
-            </label>
-            <label className="block mb-2">Paquete 1
-              <input type="number" inputMode="decimal" step="any" min={0}
-                defaultValue={membership.ludoteca.p1}
-                key={membership.ludoteca.p1}
-                onBlur={e => applyMembershipChange('ludoteca','p1', e.target.value)}
-                className="mt-1 w-full px-3 py-2 border rounded" />
-            </label>
-            <label className="block">Paquete 2
-              <input type="number" inputMode="decimal" step="any" min={0}
-                defaultValue={membership.ludoteca.p2}
-                key={membership.ludoteca.p2}
-                onBlur={e => applyMembershipChange('ludoteca','p2', e.target.value)}
-                className="mt-1 w-full px-3 py-2 border rounded" />
-            </label>
-          </div>
+  <section className="grid gap-6">
+    <div className="bg-white rounded-2xl shadow p-4">
+      <h2 className="text-lg font-semibold mb-3">Costos membresias</h2>
+      <div className="grid md:grid-cols-3 gap-6 text-sm">
+        <div>
+          <h3 className="font-semibold mb-2">Ludoteca</h3>
+          <label className="block mb-2">Visita 1-2 HRS
+            <input type="number" inputMode="decimal" step="any" min={0}
+              defaultValue={membership.ludoteca.v12}
+              key={membership.ludoteca.v12}
+              onBlur={e => applyMembershipChange('ludoteca','v12', e.target.value)}
+              className="mt-1 w-full px-3 py-2 border rounded" />
+          </label>
+          <label className="block mb-2">Visita 3-6 HRS
+            <input type="number" inputMode="decimal" step="any" min={0}
+              defaultValue={membership.ludoteca.v36}
+              key={membership.ludoteca.v36}
+              onBlur={e => applyMembershipChange('ludoteca','v36', e.target.value)}
+              className="mt-1 w-full px-3 py-2 border rounded" />
+          </label>
+          <label className="block mb-2">Paquete 1
+            <input type="number" inputMode="decimal" step="any" min={0}
+              defaultValue={membership.ludoteca.p1}
+              key={membership.ludoteca.p1}
+              onBlur={e => applyMembershipChange('ludoteca','p1', e.target.value)}
+              className="mt-1 w-full px-3 py-2 border rounded" />
+          </label>
+          <label className="block">Paquete 2
+            <input type="number" inputMode="decimal" step="any" min={0}
+              defaultValue={membership.ludoteca.p2}
+              key={membership.ludoteca.p2}
+              onBlur={e => applyMembershipChange('ludoteca','p2', e.target.value)}
+              className="mt-1 w-full px-3 py-2 border rounded" />
+          </label>
+        </div>
 
-          <div>
-            <h3 className="font-semibold mb-2">Reforzamiento</h3>
-            <label className="block mb-2">Visita
-              <input type="number" inputMode="decimal" step="any" min={0}
-                defaultValue={membership.reforzamiento.visita}
-                key={membership.reforzamiento.visita}
-                onBlur={e => applyMembershipChange('reforzamiento','visita', e.target.value)}
-                className="mt-1 w-full px-3 py-2 border rounded" />
-            </label>
-            <label className="block mb-2">MES x 12 visitas
-              <input type="number" inputMode="decimal" step="any" min={0}
-                defaultValue={membership.reforzamiento.m12}
-                key={membership.reforzamiento.m12}
-                onBlur={e => applyMembershipChange('reforzamiento','m12', e.target.value)}
-                className="mt-1 w-full px-3 py-2 border rounded" />
-            </label>
-            <label className="block mb-2">MES x 15 visitas
-              <input type="number" inputMode="decimal" step="any" min={0}
-                defaultValue={membership.reforzamiento.m15}
-                key={membership.reforzamiento.m15}
-                onBlur={e => applyMembershipChange('reforzamiento','m15', e.target.value)}
-                className="mt-1 w-full px-3 py-2 border rounded" />
-            </label>
-            <label className="block">MES x 20 visitas
-              <input type="number" inputMode="decimal" step="any" min={0}
-                defaultValue={membership.reforzamiento.m20}
-                key={membership.reforzamiento.m20}
-                onBlur={e => applyMembershipChange('reforzamiento','m20', e.target.value)}
-                className="mt-1 w-full px-3 py-2 border rounded" />
-            </label>
-          </div>
+        <div>
+          <h3 className="font-semibold mb-2">Reforzamiento</h3>
+          <label className="block mb-2">Visita
+            <input type="number" inputMode="decimal" step="any" min={0}
+              defaultValue={membership.reforzamiento.visita}
+              key={membership.reforzamiento.visita}
+              onBlur={e => applyMembershipChange('reforzamiento','visita', e.target.value)}
+              className="mt-1 w-full px-3 py-2 border rounded" />
+          </label>
+          <label className="block mb-2">MES x 12 visitas
+            <input type="number" inputMode="decimal" step="any" min={0}
+              defaultValue={membership.reforzamiento.m12}
+              key={membership.reforzamiento.m12}
+              onBlur={e => applyMembershipChange('reforzamiento','m12', e.target.value)}
+              className="mt-1 w-full px-3 py-2 border rounded" />
+          </label>
+          <label className="block mb-2">MES x 15 visitas
+            <input type="number" inputMode="decimal" step="any" min={0}
+              defaultValue={membership.reforzamiento.m15}
+              key={membership.reforzamiento.m15}
+              onBlur={e => applyMembershipChange('reforzamiento','m15', e.target.value)}
+              className="mt-1 w-full px-3 py-2 border rounded" />
+          </label>
+          <label className="block">MES x 20 visitas
+            <input type="number" inputMode="decimal" step="any" min={0}
+              defaultValue={membership.reforzamiento.m20}
+              key={membership.reforzamiento.m20}
+              onBlur={e => applyMembershipChange('reforzamiento','m20', e.target.value)}
+              className="mt-1 w-full px-3 py-2 border rounded" />
+          </label>
+        </div>
 
-          <div>
-            <h3 className="font-semibold mb-2">Terapia de Lenguaje</h3>
-            <label className="block mb-2">Individual
-              <input type="number" inputMode="decimal" step="any" min={0}
-                defaultValue={membership.terapia.individual}
-                key={membership.terapia.individual}
-                onBlur={e => applyMembershipChange('terapia','individual', e.target.value)}
-                className="mt-1 w-full px-3 py-2 border rounded" />
-            </label>
-            <label className="block">8 visitas
-              <input type="number" inputMode="decimal" step="any" min={0}
-                defaultValue={membership.terapia.ocho}
-                key={membership.terapia.ocho}
-                onBlur={e => applyMembershipChange('terapia','ocho', e.target.value)}
-                className="mt-1 w-full px-3 py-2 border rounded" />
-            </label>
-          </div>
+        <div>
+          <h3 className="font-semibold mb-2">Terapia de Lenguaje</h3>
+          <label className="block mb-2">Individual
+            <input type="number" inputMode="decimal" step="any" min={0}
+              defaultValue={membership.terapia.individual}
+              key={membership.terapia.individual}
+              onBlur={e => applyMembershipChange('terapia','individual', e.target.value)}
+              className="mt-1 w-full px-3 py-2 border rounded" />
+          </label>
+          <label className="block">8 visitas
+            <input type="number" inputMode="decimal" step="any" min={0}
+              defaultValue={membership.terapia.ocho}
+              key={membership.terapia.ocho}
+              onBlur={e => applyMembershipChange('terapia','ocho', e.target.value)}
+              className="mt-1 w-full px-3 py-2 border rounded" />
+          </label>
         </div>
       </div>
-    </section>
-  ) : (
-    <section className="bg-white rounded-2xl shadow p-4">
-      <h2 className="text-lg font-semibold">Costos membresias</h2>
-      <p className="text-sm text-gray-600">Solo administradores pueden actualizar estos precios.</p>
-    </section>
-  )
+    </div>
+  </section>
 )}
 
         {tab === 'ludoteca' && (
