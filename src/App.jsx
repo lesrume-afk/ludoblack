@@ -117,6 +117,23 @@ export default function App() {
       terapia: { individual: 400, ocho: 2800 },
     };
   });
+  const reloadMembership = async () => {
+    const { data, error } = await supabase
+      .from('membership_prices')
+      .select('service,"key",price');
+    if (error) return;
+    const m = { ludoteca: {}, reforzamiento: {}, terapia: {} };
+    for (const r of data) m[r.service][r.key] = Number(r.price);
+    setMembership(m);
+  };
+
+  const applyMembershipChange = (service, key, value) => {
+    const num = Number(value || 0);
+    setMembership(m => ({ ...m, [service]: { ...m[service], [key]: num } }));
+    supabase.from('membership_prices').upsert({
+      service, key, price: num, updated_by: auth?.id ?? null
+    });
+  };
 
   const [tab, setTab] = useState("cocina"); // 'cocina' en lugar de 'venta'
   const [auth, setAuth] = useState(() => {
@@ -157,7 +174,15 @@ export default function App() {
     }
   };
 
-  useEffect(() => { if (auth) { reloadInventory(); reloadSales(); reloadMoves(); reloadRegister(); } }, [auth]);
+  useEffect(() => {
+    if (auth) {
+      reloadInventory();
+      reloadSales();
+      reloadMoves();
+      reloadRegister();
+      reloadMembership();
+    }
+  }, [auth]);
 
   useEffect(() => {
     const ch = supabase
@@ -167,6 +192,7 @@ export default function App() {
       .on('postgres_changes', { event: '*', schema: 'public', table: 'sale_items' }, reloadSales)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'cash_moves' }, reloadMoves)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'register_state' }, reloadRegister)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'membership_prices' }, reloadMembership)
       .subscribe();
     return () => { try { supabase.removeChannel(ch); } catch {} };
   }, []);
@@ -610,25 +636,29 @@ export default function App() {
           <label className="block mb-2">Visita 1-2 HRS
             <input type="number" inputMode="decimal" step="any" min={0}
               defaultValue={membership.ludoteca.v12}
-              onBlur={e => setMembership(m => ({...m, ludoteca:{...m.ludoteca, v12: Number(e.target.value || 0)}}))}
+              key={membership.ludoteca.v12}
+              onBlur={e => applyMembershipChange('ludoteca','v12', e.target.value)}
               className="mt-1 w-full px-3 py-2 border rounded" />
           </label>
           <label className="block mb-2">Visita 3-6 HRS
             <input type="number" inputMode="decimal" step="any" min={0}
               defaultValue={membership.ludoteca.v36}
-              onBlur={e => setMembership(m => ({...m, ludoteca:{...m.ludoteca, v36: Number(e.target.value || 0)}}))}
+              key={membership.ludoteca.v36}
+              onBlur={e => applyMembershipChange('ludoteca','v36', e.target.value)}
               className="mt-1 w-full px-3 py-2 border rounded" />
           </label>
           <label className="block mb-2">Paquete 1
             <input type="number" inputMode="decimal" step="any" min={0}
               defaultValue={membership.ludoteca.p1}
-              onBlur={e => setMembership(m => ({...m, ludoteca:{...m.ludoteca, p1: Number(e.target.value || 0)}}))}
+              key={membership.ludoteca.p1}
+              onBlur={e => applyMembershipChange('ludoteca','p1', e.target.value)}
               className="mt-1 w-full px-3 py-2 border rounded" />
           </label>
           <label className="block">Paquete 2
             <input type="number" inputMode="decimal" step="any" min={0}
               defaultValue={membership.ludoteca.p2}
-              onBlur={e => setMembership(m => ({...m, ludoteca:{...m.ludoteca, p2: Number(e.target.value || 0)}}))}
+              key={membership.ludoteca.p2}
+              onBlur={e => applyMembershipChange('ludoteca','p2', e.target.value)}
               className="mt-1 w-full px-3 py-2 border rounded" />
           </label>
         </div>
@@ -638,25 +668,29 @@ export default function App() {
           <label className="block mb-2">Visita
             <input type="number" inputMode="decimal" step="any" min={0}
               defaultValue={membership.reforzamiento.visita}
-              onBlur={e => setMembership(m => ({...m, reforzamiento:{...m.reforzamiento, visita: Number(e.target.value || 0)}}))}
+              key={membership.reforzamiento.visita}
+              onBlur={e => applyMembershipChange('reforzamiento','visita', e.target.value)}
               className="mt-1 w-full px-3 py-2 border rounded" />
           </label>
           <label className="block mb-2">MES x 12 visitas
             <input type="number" inputMode="decimal" step="any" min={0}
               defaultValue={membership.reforzamiento.m12}
-              onBlur={e => setMembership(m => ({...m, reforzamiento:{...m.reforzamiento, m12: Number(e.target.value || 0)}}))}
+              key={membership.reforzamiento.m12}
+              onBlur={e => applyMembershipChange('reforzamiento','m12', e.target.value)}
               className="mt-1 w-full px-3 py-2 border rounded" />
           </label>
           <label className="block mb-2">MES x 15 visitas
             <input type="number" inputMode="decimal" step="any" min={0}
               defaultValue={membership.reforzamiento.m15}
-              onBlur={e => setMembership(m => ({...m, reforzamiento:{...m.reforzamiento, m15: Number(e.target.value || 0)}}))}
+              key={membership.reforzamiento.m15}
+              onBlur={e => applyMembershipChange('reforzamiento','m15', e.target.value)}
               className="mt-1 w-full px-3 py-2 border rounded" />
           </label>
           <label className="block">MES x 20 visitas
             <input type="number" inputMode="decimal" step="any" min={0}
               defaultValue={membership.reforzamiento.m20}
-              onBlur={e => setMembership(m => ({...m, reforzamiento:{...m.reforzamiento, m20: Number(e.target.value || 0)}}))}
+              key={membership.reforzamiento.m20}
+              onBlur={e => applyMembershipChange('reforzamiento','m20', e.target.value)}
               className="mt-1 w-full px-3 py-2 border rounded" />
           </label>
         </div>
@@ -666,13 +700,15 @@ export default function App() {
           <label className="block mb-2">Individual
             <input type="number" inputMode="decimal" step="any" min={0}
               defaultValue={membership.terapia.individual}
-              onBlur={e => setMembership(m => ({...m, terapia:{...m.terapia, individual: Number(e.target.value || 0)}}))}
+              key={membership.terapia.individual}
+              onBlur={e => applyMembershipChange('terapia','individual', e.target.value)}
               className="mt-1 w-full px-3 py-2 border rounded" />
           </label>
           <label className="block">8 visitas
             <input type="number" inputMode="decimal" step="any" min={0}
               defaultValue={membership.terapia.ocho}
-              onBlur={e => setMembership(m => ({...m, terapia:{...m.terapia, ocho: Number(e.target.value || 0)}}))}
+              key={membership.terapia.ocho}
+              onBlur={e => applyMembershipChange('terapia','ocho', e.target.value)}
               className="mt-1 w-full px-3 py-2 border rounded" />
           </label>
         </div>
@@ -1198,7 +1234,6 @@ function Login({ onLogin }) {
         </label>
         {err && <div className="text-sm text-red-600">{err}</div>}
         <button type="submit" className="w-full px-4 py-2 rounded bg-gray-900 text-white hover:bg-black">Iniciar sesión</button>
-        <div className="text-xs text-gray-500 text-center">El alta de cuentas se gestiona en base de datos.</div>
       </form>
     </div>
   );
