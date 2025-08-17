@@ -1019,7 +1019,24 @@ function ReplenishForm({ onAdd }) {
 function CashMoveForm({ onAdd }) {
   const [type, setType] = useState('ingreso');
   const [concept, setConcept] = useState('');
-  const [amount, setAmount] = useState(0);
+  // Mantener como string para permitir vacío y evitar 0 fijo
+  const [amountStr, setAmountStr] = useState('');
+
+  const handleAmountChange = (e) => {
+    // Acepta solo dígitos y un punto decimal
+    const raw = e.target.value.replace(/[^0-9.]/g, '');
+    const parts = raw.split('.');
+    const sanitized = parts.length > 2 ? parts[0] + '.' + parts.slice(1).join('') : raw;
+    setAmountStr(sanitized);
+  };
+
+  const submit = () => {
+    const amount = Number(amountStr || 0);
+    onAdd(type, concept.trim(), amount);
+    setConcept('');
+    setAmountStr('');
+  };
+
   return (
     <div className="grid md:grid-cols-4 gap-2 items-end">
       <select value={type} onChange={e => setType(e.target.value)} className="px-3 py-2 border rounded">
@@ -1027,8 +1044,15 @@ function CashMoveForm({ onAdd }) {
         <option value="egreso">Egreso</option>
       </select>
       <input value={concept} onChange={e => setConcept(e.target.value)} placeholder="Concepto" className="px-3 py-2 border rounded md:col-span-2" />
-      <input type="number" inputMode="decimal" step="any" min={0} value={amount} onChange={e => setAmount(Number(e.target.value || 0))} placeholder="$" className="px-3 py-2 border rounded" />
-      <button className="px-4 py-2 rounded bg-gray-900 text-white hover:bg-black md:col-span-4" onClick={() => { onAdd(type, concept.trim(), amount); setConcept(''); setAmount(0); }}>Registrar</button>
+      <input
+        type="text"
+        inputMode="decimal"
+        value={amountStr}
+        onChange={handleAmountChange}
+        placeholder="0"
+        className="px-3 py-2 border rounded"
+      />
+      <button className="px-4 py-2 rounded bg-gray-900 text-white hover:bg-black md:col-span-4" onClick={submit}>Registrar</button>
     </div>
   );
 }
