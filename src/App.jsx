@@ -222,6 +222,7 @@ const MP_LABELS = {
   const qrInstance = useRef(null);
   const lastScan = useRef({ text: '', at: 0 }); // antirrebote
   const scanCooldown = useRef(new Map());
+  const SCAN_COOLDOWN_MS = 2000; // Tiempo mínimo entre lecturas del mismo QR
 
   // QR modal state
   const [qrProduct, setQrProduct] = useState(null); // product en modal
@@ -463,7 +464,7 @@ const MP_LABELS = {
   const onScanSuccess = (decodedText) => {
     const now = Date.now();
     const last = scanCooldown.current.get(decodedText) || 0;
-    if (now - last < 700) return; // cooldown por QR ~0.7s
+    if (now - last < SCAN_COOLDOWN_MS) return; // cooldown entre lecturas (2s)
     scanCooldown.current.set(decodedText, now);
   
     const payload = decodeProductQRData(decodedText);
