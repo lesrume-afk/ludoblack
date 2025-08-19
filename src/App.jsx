@@ -201,17 +201,18 @@ const MP_LABELS = {
   }, [auth]);
 
   useEffect(() => {
+    if (!auth) return; // espera a que haya sesión para que el canal use el JWT correcto
     const ch = supabase
       .channel('db-changes')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'inventory' }, reloadInventory)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'sales' }, reloadSales)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'sale_items' }, reloadSales)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'cash_moves' }, reloadMoves)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'register_state' }, reloadRegister)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'membership_prices' }, reloadMembership)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'inventory' }, () => reloadInventory())
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'sales' }, () => reloadSales())
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'sale_items' }, () => reloadSales())
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'cash_moves' }, () => reloadMoves())
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'register_state' }, () => reloadRegister())
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'membership_prices' }, () => reloadMembership())
       .subscribe();
     return () => { try { supabase.removeChannel(ch); } catch {} };
-  }, []);
+  }, [auth]);
 
   // Carrito de venta actual
   const [cart, setCart] = useState([]); // {id, name, price, qty}
