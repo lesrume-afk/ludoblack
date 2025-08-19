@@ -141,17 +141,18 @@ const MP_LABELS = {
 
   // ANTES: const applyMembershipChange = (service, key, value) => { ... }
   const applyMembershipChange = async (service, key, value) => {
-  const num = Number(value || 0);
-  setMembership(m => ({ ...m, [service]: { ...m[service], [key]: num } }));
-  try {
-    await supabase.rpc('upsert_membership_price', {
-      _service: service,
-      _key: key,
-      _label: MP_LABELS?.[service]?.[key] ?? key,
-      _price: num,
-    });
-  } catch {}
-};
+    const num = Number(value || 0);
+    setMembership(m => ({ ...m, [service]: { ...m[service], [key]: num } }));
+    try {
+      await supabase.rpc('upsert_membership_price', {
+        _service: service,
+        _key: key,
+        _label: MP_LABELS?.[service]?.[key] ?? key,
+        _price: num,
+      });
+      broadcastInvalidate('membership');
+    } catch {}
+  };
 
   const [tab, setTab] = useState("cocina"); // 'cocina' en lugar de 'venta'
   const [auth, setAuth] = useState(() => {
@@ -214,12 +215,31 @@ const MP_LABELS = {
     return () => { try { supabase.removeChannel(ch); } catch {} };
   }, [auth]);
 
+  useEffect(() => {
+    if (!auth) return;
+    if (syncCh.current) { try { supabase.removeChannel(syncCh.current); } catch {} ; syncCh.current = null; }
+    const ch = supabase
+      .channel('pos-sync', { config: { broadcast: { self: false } } })
+      .on('broadcast', { event: 'invalidate' }, ({ payload }) => {
+        const scope = payload?.scope || 'all';
+        if (scope === 'all' || scope === 'inventory') reloadInventory();
+        if (scope === 'all' || scope === 'sales') reloadSales();
+        if (scope === 'all' || scope === 'moves') reloadMoves();
+        if (scope === 'all' || scope === 'register') reloadRegister();
+        if (scope === 'all' || scope === 'membership') reloadMembership();
+      })
+      .subscribe();
+    syncCh.current = ch;
+    return () => { try { supabase.removeChannel(ch); } catch {} };
+  }, [auth]);
+
   // Carrito de venta actual
   const [cart, setCart] = useState([]); // {id, name, price, qty}
   const [search, setSearch] = useState("");
   const [paid, setPaid] = useState("");
   const [payMethod, setPayMethod] = useState('caja');
   const [msg, setMsg] = useState("");
+  const syncCh = useRef(null); // canal de broadcast entre dispositivos
 
   // Scanner state (Cocina)
   const [scanActive, setScanActive] = useState(false);
@@ -271,6 +291,17 @@ const MP_LABELS = {
   // Helpers de UI
   const toast = (t) => { setMsg(t); setTimeout(() => setMsg(""), 2200); };
 
+  // Notifica a otros clientes que recarguen datos del ámbito dado
+const broadcastInvalidate = (scope = 'all') => {
+  try {
+    syncCh.current?.send({
+      type: 'broadcast',
+      event: 'invalidate',
+      payload: { scope, at: Date.now() }
+    });
+  } catch {}
+};
+
   // Operaciones de Venta (Trabajador)
   const addToCart = (product, qty = 1) => {
     if (qty <= 0) return;
@@ -306,6 +337,8 @@ const MP_LABELS = {
     }
     setCart([]); setPaid(''); setPayMethod('caja'); toast('Venta registrada');
     await reloadInventory(); await reloadSales();
+    broadcastInvalidate('inventory');
+    broadcastInvalidate('sales');
   };
 
   // Venta de servicios (no inventario)
@@ -317,6 +350,7 @@ const MP_LABELS = {
     const { error } = await supabase.rpc('process_service_sale', { _method: method, _paid: paidNum, _note: note || '', _items: payload });
     if (error) { toast(error.message || 'Error al registrar'); return; }
     toast('Venta registrada');
+    broadcastInvalidate('sales');
   };
 
   // Inventario
@@ -325,6 +359,7 @@ const MP_LABELS = {
     const { error } = await supabase.rpc('create_product', { _name: name, _price: price, _stock: stock });
     if (error) { toast(error.message || 'Error al crear'); return; }
     await reloadInventory();
+    broadcastInvalidate('inventory');
     toast('Producto agregado');
   };
   const addStock = async (id, qty, cost = 0) => {
@@ -333,6 +368,8 @@ const MP_LABELS = {
     if (error) { toast(error.message || 'Error al actualizar stock'); return; }
     await reloadInventory();
     await reloadMoves();
+    broadcastInvalidate('inventory');
+    broadcastInvalidate('moves');
     toast('Stock actualizado');
   };
   // Descontar stock (solo admin desde UI)
@@ -341,6 +378,7 @@ const MP_LABELS = {
     const { error } = await supabase.rpc('add_stock', { _product: id, _qty: -qty, _cost: 0 });
     if (error) { toast(error.message || 'Error al descontar stock'); return; }
     await reloadInventory();
+    broadcastInvalidate('inventory');
     toast('Stock descontado');
   };
   const updatePrice = async (id, price) => {
@@ -348,11 +386,13 @@ const MP_LABELS = {
     const { error } = await supabase.rpc('update_price', { _product: id, _price: price });
     if (error) { toast(error.message || 'Error al actualizar precio'); return; }
     await reloadInventory();
+    broadcastInvalidate('inventory');
   };
   const removeProduct = async (id) => {
     const { error } = await supabase.rpc('remove_product', { _product: id });
     if (error) { toast(error.message || 'Error al eliminar'); return; }
     await reloadInventory();
+    broadcastInvalidate('inventory');
   };
 
   // Movimientos de caja manuales
@@ -361,6 +401,7 @@ const MP_LABELS = {
     const { error } = await supabase.rpc('add_cash_move', { _type: type, _concept: concept, _amount: amount });
     if (error) { toast(error.message || 'Error al registrar'); return; }
     await reloadMoves();
+    broadcastInvalidate('moves');
     toast((type === 'ingreso' ? 'Ingreso' : 'Egreso') + ' registrado');
   };
 
@@ -369,12 +410,16 @@ const MP_LABELS = {
     const { error } = await supabase.rpc('admin_adjust_sale_item', { _sale_id: saleId, _product_id: itemId, _new_qty: newQty });
     if (error) { toast('Error al ajustar'); return; }
     await reloadInventory(); await reloadSales();
+    broadcastInvalidate('inventory');
+    broadcastInvalidate('sales');
     toast('Venta ajustada');
   };
   const adminDeleteSale = async (saleId) => {
     const { error } = await supabase.rpc('admin_delete_sale', { _sale_id: saleId });
     if (error) { toast('Error al eliminar'); return; }
     await reloadInventory(); await reloadSales();
+    broadcastInvalidate('inventory');
+    broadcastInvalidate('sales');
     toast('Venta eliminada y stock devuelto');
   };
 
@@ -418,6 +463,7 @@ const MP_LABELS = {
     if (!confirm('¿Cerrar el día y fijar caja inicial al saldo actual?')) return;
     await supabase.rpc('set_start_cash', { _amount: cashInRegister });
     await reloadRegister();
+    broadcastInvalidate('register');
     toast('Día cerrado');
   };
 
@@ -461,6 +507,8 @@ const MP_LABELS = {
     await supabase.from('sales').delete().gte('ts', start.toISOString()).lt('ts', end.toISOString());
     await supabase.from('cash_moves').delete().gte('ts', start.toISOString()).lt('ts', end.toISOString());
     await reloadSales(); await reloadMoves();
+    broadcastInvalidate('sales');
+    broadcastInvalidate('moves');
     toast('Mes consolidado y depurado');
   };
 
