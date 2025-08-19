@@ -57,8 +57,12 @@ function decodeProductQRData(str) {
   try {
     const obj = JSON.parse(str);
     if (obj && obj.v === 1 && obj.id) return { id: obj.id }; // v1
-    if (obj && (obj.id || obj.name)) return obj; // compat: legado {id,name,price}
+    if (obj && (obj.id || obj.name)) return obj; // compat legado {id,name,price}
   } catch {}
+  // Fallback: si el QR es solo un UUID en texto (códigos viejos), úsalo como id
+  const t = String(str || '').trim();
+  const uuidRe = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+  if (uuidRe.test(t)) return { id: t };
   return null;
 }
 function applyScanToCart(cart, inventory, payload, qty = 1) {
@@ -287,14 +291,18 @@ const MP_LABELS = {
     const totalVenta = cartTotal(currentCart);
     if (isNaN(paidNum) || paidNum < totalVenta) { toast('Pago insuficiente'); return; }
 
-    const items = currentCart.map(i => ({ product_id: i.id, qty: Number(i.qty || 0) }));
+    const items = currentCart.map(i => ({ id: i.id, qty: Number(i.qty || 0) }));
     const { data, error } = await supabase.rpc('process_sale', {
       _method: payMethod,
       _paid: paidNum,
       _note: '',
       _items: items
     });
-    if (error) { toast(error.message || 'Error al cobrar'); return; }
+    if (error) { 
+      console.error('process_sale error', error);
+      toast(error.message || 'Error al cobrar'); 
+      return; 
+    }
     setCart([]); setPaid(''); setPayMethod('caja'); toast('Venta registrada');
     await reloadInventory(); await reloadSales();
   };
@@ -326,14 +334,13 @@ const MP_LABELS = {
     await reloadMoves();
     toast('Stock actualizado');
   };
-
-  // Permitir que solo admin reste stock vía RPC
-  const adminRemoveStock = async (id, qty) => {
+  // Descontar stock (solo admin desde UI)
+  const subStock = async (id, qty) => {
     if (qty <= 0) return;
-    const { error } = await supabase.rpc('admin_remove_stock', { _product: id, _qty: qty });
-    if (error) { toast(error.message || 'Error al restar stock'); return; }
+    const { error } = await supabase.rpc('add_stock', { _product: id, _qty: -qty, _cost: 0 });
+    if (error) { toast(error.message || 'Error al descontar stock'); return; }
     await reloadInventory();
-    toast('Stock reducido');
+    toast('Stock descontado');
   };
   const updatePrice = async (id, price) => {
     if (price < 0) return;
@@ -800,10 +807,14 @@ const MP_LABELS = {
                       </td>
 <td>{p.stock}</td>
 <td>
-  <ReplenishForm
-    onAdd={(qty) => addStock(p.id, qty)}
-    onSubtract={role === 'admin' ? (qty) => adminRemoveStock(p.id, qty) : undefined}
-  />
+  {role === 'admin' ? (
+    <div className="flex items-center gap-2">
+      <ReplenishForm onAdd={(qty) => addStock(p.id, qty)} />
+      <SubtractForm onSub={(qty) => subStock(p.id, qty)} />
+    </div>
+  ) : (
+    <ReplenishForm onAdd={(qty) => addStock(p.id, qty)} />
+  )}
 </td>
 <td><button className="px-2 py-1 rounded bg-gray-100 hover:bg-gray-200" onClick={() => setQrProduct(p)}>Ver QR</button></td>
 <td>{role === 'admin' ? <button className="text-red-600 hover:underline" onClick={() => removeProduct(p.id)}>Eliminar</button> : null}</td>
@@ -1008,7 +1019,7 @@ function NewProductForm({ onCreate }) {
   );
 }
 
-function ReplenishForm({ onAdd, onSubtract }) {
+function ReplenishForm({ onAdd }) {
   const [qty, setQty] = useState('');
   return (
     <div className="flex items-center gap-2">
@@ -1027,14 +1038,29 @@ function ReplenishForm({ onAdd, onSubtract }) {
       >
         Sumar
       </button>
-      {onSubtract && (
-        <button
-          className="px-3 py-1 rounded bg-red-600 text-white hover:bg-red-700"
-          onClick={() => { const q = Number(qty || 0); onSubtract(q); setQty(''); }}
-        >
-          Restar
-        </button>
-      )}
+    </div>
+  );
+}
+
+function SubtractForm({ onSub }) {
+  const [qty, setQty] = useState('');
+  return (
+    <div className="flex items-center gap-2">
+      <input
+        type="text"
+        inputMode="numeric"
+        pattern="[0-9]*"
+        value={qty}
+        onChange={e => setQty(e.target.value.replace(/[^0-9]/g, ''))}
+        className="w-20 px-2 py-1 border rounded"
+        placeholder="Cant."
+      />
+      <button
+        className="px-3 py-1 rounded bg-red-600 text-white hover:bg-red-700"
+        onClick={() => { const q = Number(qty || 0); onSub(q); setQty(''); }}
+      >
+        Restar
+      </button>
     </div>
   );
 }
